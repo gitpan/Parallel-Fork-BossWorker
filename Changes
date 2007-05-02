@@ -1,5 +1,8 @@
 Revision history for Perl extension Parallel::Fork::BossWorker.
 
+0.02  Wed May 02 14:26:00 2007
+	- Fixed copyright, also added a use Storable statement in the module.
+	- Updated metadata to require Storable.
 0.01  Thu Apr 26 15:45:23 2007
 	- original version; created by h2xs 1.23 with options
 		-AX --skip-exporter --use-new-tests -n Parallel::Fork::BossWorker

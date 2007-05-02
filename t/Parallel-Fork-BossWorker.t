@@ -1,7 +1,6 @@
-use Test::More tests => 4;
+use Test::More tests => 3;
 BEGIN { use_ok('Parallel::Fork::BossWorker') };
 require_ok('Parallel::Fork::BossWorker');
-require_ok('Storable');
 
 # When the result handler is executed, the value is stored here
 my $result_value = 0;
