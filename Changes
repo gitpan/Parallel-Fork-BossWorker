@@ -1,5 +1,10 @@
 Revision history for Perl extension Parallel::Fork::BossWorker.
 
+0.03  Thu May 03 17:04:00 2007
+	- OOized some functions I missed originally
+	- Changed from Storable to Data::Dumper due to a show-stopper bug in Storable.
+	- Removed the usage of pack and unpack
+	- Added a new msg_delimiter parameter
 0.02  Wed May 02 14:26:00 2007
 	- Fixed copyright, also added a use Storable statement in the module.
 	- Updated metadata to require Storable.

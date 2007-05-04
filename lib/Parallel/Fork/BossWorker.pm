@@ -3,11 +3,13 @@ package Parallel::Fork::BossWorker;
 use 5.008008;
 use strict;
 use warnings;
-use Storable;
+use Carp;
+use Data::Dumper qw(Dumper);
+use IO::Handle;
 
 # Perl module variables
 our @ISA = qw();
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 sub new {
 	my $class = shift;
@@ -18,7 +20,8 @@ sub new {
 		worker_count   => $values{worker_count}   || 10,     # Number of workers
 		global_timeout => $values{global_timeout} || 0,      # Number of seconds before the worker terminates the job, 0 for unlimited
 		work_handler   => $values{work_handler},             # Handler which will process the data from the boss
-		work_queue     => []
+		work_queue     => [],
+		msg_delimiter  => "\0\0\0"
 	};
 	bless $self, ref($class) || $class;
 
@@ -33,7 +36,7 @@ sub new {
 sub add_work(\@) {
 	my $self = shift;
 	my $work = shift;
-	push(@{ $self->{work_queue} }, pack('u', Storable::freeze($work)));
+	push(@{ $self->{work_queue} }, $work);
 }
 
 sub process {
@@ -57,35 +60,24 @@ sub process {
 		my $from_workers = $self->{from_workers};
 		
 		# Read from the workers, loop until they all shut down
-		while(my $result = &receive($from_workers)) {
+		while(my $result = $self->receive($from_workers)) {
 			
-			# Break the result up into it's pieces
-			if ($result =~ m/^(\d+)\n?(.*)?/s) {
+			# Process the result handler
+			if ($result->{data} && defined $self->{result_handler}) {
+				&{ $self->{result_handler} }( $result->{data} );
+			}
 			
-				# Get the worker's pid and result data
-				my $pid = $1;
-				my $data = $2;
-				
-				# Process the result handler
-				if (defined $data && defined $self->{result_handler}) {
-					&{ $self->{result_handler} }(
-						Storable::thaw(
-							unpack('u', $data)
-						)
-					);
-				}
-				
-				# If there's still work to be done, send it to the worker, otherwise shut it down
-				if ($#{ $self->{work_queue} } > -1) {
-					my $worker = $self->{workers}->{$pid};
-					&send($worker, pop(@{ $self->{work_queue} }));
-				} else {
-					my $fh = $self->{workers}->{$pid};
-					delete($self->{workers}->{$pid});
-					close($fh);
-				}
+			# If there's still work to be done, send it to the worker, otherwise shut it down
+			if ($#{ $self->{work_queue} } > -1) {
+				my $worker = $self->{workers}->{$result->{pid}};
+				$self->send(
+					$self->{workers}->{ $result->{pid} }, # Worker's pipe
+					pop(@{ $self->{work_queue} })
+				);
 			} else {
-				confess("Malformed message received from worker:\n----SNIP----\n$result\n----SNIP----\n");
+				my $fh = $self->{workers}->{ $result->{pid} };
+				delete($self->{workers}->{ $result->{pid} });
+				close($fh);
 			}
 		}
 	};
@@ -128,10 +120,10 @@ sub start {
 			my $to_boss = $self->{to_boss};
 			
 			# Send the initial request
-			&send($to_boss,"$$");
+			$self->send($to_boss, {pid => $$});
 			
 			# Start processing
-			&worker($self->{to_boss}, $from_boss, $self->{work_handler}, $self->{global_timeout});
+			$self->worker($from_boss);
 			
 			# When the worker subroutine completes, exit
 			exit;
@@ -145,17 +137,15 @@ sub start {
 	delete($self->{to_boss});
 }
 
-sub worker(\*\*\&\&\&$) {
-	my ($to_boss, $from_boss, $work_handler, $timeout) = @_;
+sub worker(\*) {
+	my $self = shift();
+	my $from_boss = shift();
 	
 	# Read instructions from the server
-	while (my $input = &receive($from_boss)) {
+	while (my $instructions = $self->receive($from_boss)) {
 		
 		# If the handler's children die, that's not our business
 		$SIG{CHLD} = 'IGNORE';
-		
-		# Unserialize the boss' instructions
-		my $instructions = Storable::thaw(unpack('u', $input));
 		
 		# Execute the handler with the given instructions
 		my $result;
@@ -166,11 +156,11 @@ sub worker(\*\*\&\&\&$) {
 			};
 			
 			# Set alarm
-			alarm($timeout);
+			alarm($self->{global_timeout});
 			
 			# Execute the handler and get it's result
-			if (defined $work_handler) {
-				$result = &{ $work_handler }($instructions);
+			if (defined $self->{work_handler}) {
+				$result = &{ $self->{work_handler} }($instructions);
 			}
 			
 			# Disable alarm
@@ -183,56 +173,49 @@ sub worker(\*\*\&\&\&$) {
 		}
 		
 		# Send the result to the server
-		if (defined $result) {
-			&send($to_boss, "$$\n" . pack('u', Storable::freeze($result)));
-		} else {
-			&send($to_boss, "$$");
-		}
+		$self->send($self->{to_boss}, {pid => $$, data => $result});
 	}
 }
 
 sub receive(\*) {
-	my $fh = shift;
-	
-	# Save the current file handle
-	my $old_fh = select();
-	
-	# Set the "current" file handle to the new value
-	select($fh);
-	
-	# Set the input record separator
-	local $/ = "\t";
+	my $self = shift();
+
+	# Get the file handle
+	my $fh = shift();
 	
 	# Get a value from the file handle
+	local $/ = $self->{msg_delimiter};
 	my $value = <$fh>;
 	
-	# Restore the "current" file handle
-	select($old_fh);
-	
-	# Return the value from the file handle
-	return $value;
+	# Deserialize the data
+	no strict;
+	no warnings;
+	my $data = eval($value);
+
+	if ($@) {
+		confess("Failed to deserialize data: $@");
+	}
+
+	return $data;
 }
 
 sub send(\*$) {
-	my ($fh, $value) = @_;
-	
-	# Save the current file handle
-	my $old_fh = select();
-	
-	# Set the "current" file handle to the new value
-	select($fh);
-	
-	# Set the output record separator
-	local $\ = "\t";
-	
+	my $self = shift();
+
+	# Get the file handle
+	my $fh = shift();
+
+	# Get the value which will be sent
+	my $value = shift();
+
 	# Print the value to the file handle
-	print $value;
+	local $Data::Dumper::Deepcopy = 1;
+	local $Data::Dumper::Indent = 0;
+	local $Data::Dumper::Purity = 1;
+	print $fh Dumper($value) . $self->{msg_delimiter};
 	
 	# Force the file handle to flush
-	$| = 1;
-	
-	# Restore the "current" file handle
-	select($old_fh);
+	$fh->flush();
 }
 
 1;
@@ -334,6 +317,13 @@ worker_count can scale the worker count to any number of workers you wish.
 Take care though, as too many workers can adversely impact performance, though
 the optimal number of workers will depend on what your handlers do.
 
+=item * C<< msg_delimiter => $delimiter >>
+
+Sending messages to and from the child processes is accomplished using
+Data::Dumper. When transmitting data, a delimiter must be used to identify the
+breaks in messages. By default, this delimiter is "\0\0\0", this delimiter may
+not appear in your data.
+
 =head2 add_work(\%work)
 
 Adds work to the instance's queue.
@@ -352,7 +342,9 @@ This module depends on the following modules:
 
 Carp
 
-Storable
+Data::Dumper
+
+IO::Handle
 
 =head1 BUGS
 
@@ -380,8 +372,9 @@ modification, are permitted provided that the following conditions are met:
      this list of conditions and the following disclaimer in the documentation
      and/or other materials provided with the distribution.
 
-   * The name of Jeff Rodriguez may not be used to endorse or promote products
-     derived from this software without specific prior written permission.
+   * Neither the name of the <ORGANIZATION> nor the names of its contributors
+     may be used to endorse or promote products derived from this software
+     without specific prior written permission.
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
