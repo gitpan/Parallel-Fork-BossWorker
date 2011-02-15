@@ -1,16 +1,19 @@
-Parallel-Fork-BossWorker version 0.03
-=====================================
+Parallel::Fork::BossWorker
+==========================
 
-The README is used to introduce the module and provide instructions on
-how to install the module, any machine dependencies it may have (for
-example C compilers and installed libraries) and any other information
-that should be provided before the module is installed.
+Parallel::Fork::BossWorker makes creating multiprocess applications easy.
 
-A README file is required for CPAN modules since CPAN extracts the
-README file from a module distribution so that people browsing the
-archive can use it get an idea of the modules uses. It is usually a
-good idea to provide version information here so that people can
-decide whether fixes for the module are worth downloading.
+The module is designed to work in a queue style of setup; with the worker
+processes requesting 'work' from the boss process. The boss process
+transparently serializes and sends the work data to your work handler, to be
+consumed and worked. The worker process then transparently serializes and
+sends optional data back to the boss process to be handled in your result
+handler.
+
+This process repeats until the work queue is empty.
+
+See the POD documentation in BossWorker.pm for details on how to use
+P:F:BW.
 
 INSTALLATION
 
@@ -25,16 +28,16 @@ DEPENDENCIES
 
 This module requires these other modules and libraries:
 
-  blah blah blah
+  Data::CGIForm
 
 COPYRIGHT AND LICENCE
 
-Put the correct copyright and licence information here.
+Copyright (c) 2007 by Jeff Rodriguez
 
-Copyright (C) 2007 by Jeff Rodriguez
+Portions Copyright (c) 2011 Tim Wilde
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.8.8 or,
 at your option, any later version of Perl 5 you may have available.
 
-
+$Id: README 7 2011-02-15 13:20:54Z twilde $
