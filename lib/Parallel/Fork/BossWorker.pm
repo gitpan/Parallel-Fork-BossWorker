@@ -1,6 +1,6 @@
 package Parallel::Fork::BossWorker;
 #
-# $Id: BossWorker.pm 8 2011-02-15 13:24:52Z twilde $
+# $Id: BossWorker.pm 11 2011-07-16 15:49:45Z twilde $
 #
 
 use 5.008008;
@@ -13,7 +13,7 @@ use IO::Select;
 
 # Perl module variables
 our @ISA = qw();
-our $VERSION = '0.04_1';
+our $VERSION = '0.04';
 
 sub new {
     my $class = shift;

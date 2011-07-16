@@ -8,6 +8,7 @@ WriteMakefile(
     PREREQ_PM         => {
 			   Data::Dumper => 0
 			 }, # e.g., Module::Name => 1.1
+    LICENSE	      => 'perl',
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/Parallel/Fork/BossWorker.pm', # retrieve abstract from module
        AUTHOR         => 'Jeff Rodriguez, Tim Wilde') : ()),

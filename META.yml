@@ -1,10 +1,10 @@
 --- #YAML:1.0
 name:               Parallel-Fork-BossWorker
-version:            0.04_1
+version:            0.04
 abstract:           Perl extension for easiliy creating forking queue processing applications.
 author:
     - Jeff Rodriguez, Tim Wilde
-license:            unknown
+license:            perl
 distribution_type:  module
 configure_requires:
     ExtUtils::MakeMaker:  0
